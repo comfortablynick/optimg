@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,38 +13,61 @@ import (
 	"github.com/discordapp/lilliput"
 )
 
+const debug_mode bool = false
+
+type Options struct {
+	version        bool
+	debug          bool
+	inputFilename  string
+	outputFilename string
+	outputWidth    int
+	outputHeight   int
+	pctResize      int
+	stretch        bool
+	force          bool
+}
+
 var EncodeOptions = map[string]map[int]int{
 	".jpeg": map[int]int{lilliput.JpegQuality: 85},
 	".png":  map[int]int{lilliput.PngCompression: 7},
 	".webp": map[int]int{lilliput.WebpQuality: 85},
 }
 
-func main() {
-	var inputFilename string
-	var outputWidth int
-	var outputHeight int
-	var pctResize int
-	var outputFilename string
-	var stretch bool
-	var force bool
+var opt Options
 
-	flag.StringVar(&inputFilename, "input", "", "name of input file to resize/transcode")
-	flag.StringVar(&outputFilename, "output", "", "name of output file, also determines output type")
-	flag.IntVar(&outputWidth, "width", 0, "width of output file")
-	flag.IntVar(&outputHeight, "height", 0, "height of output file")
-	flag.IntVar(&pctResize, "pct", 0, "resize to pct of original dimensions")
-	flag.BoolVar(&stretch, "stretch", false, "perform stretching resize instead of cropping")
-	flag.BoolVar(&force, "force", false, "overwrite output file if it exists")
+func init() {
+	// init log
+	// TODO: add time, etc.
+	log.SetPrefix("DEBUG ")
+	log.SetFlags(log.Lshortfile)
+	log.SetOutput(ioutil.Discard)
+
+	// set flags
+	flag.StringVar(&opt.inputFilename, "input", "", "name of input file to resize/transcode")
+	flag.StringVar(&opt.outputFilename, "output", "", "name of output file, also determines output type")
+	flag.IntVar(&opt.outputWidth, "width", 0, "width of output file")
+	flag.IntVar(&opt.outputHeight, "height", 0, "height of output file")
+	flag.IntVar(&opt.pctResize, "pct", 0, "resize to pct of original dimensions")
+	flag.BoolVar(&opt.stretch, "stretch", false, "perform stretching resize instead of cropping")
+	flag.BoolVar(&opt.force, "force", false, "overwrite output file if it exists")
+	flag.BoolVar(&opt.debug, "debug", false, "print debug messages to console")
 	flag.Parse()
 
-	if inputFilename == "" {
+	if debug_mode || opt.debug {
+		log.SetOutput(os.Stderr)
+	}
+}
+
+func main() {
+	log.Printf("Command line options: %+v", opt)
+	if opt.inputFilename == "" {
 		fmt.Printf("No input filename provided, quitting.\n")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	// decoder wants []byte, so read the whole file into a buffer
-	inputBuf, err := ioutil.ReadFile(inputFilename)
+	inputBuf, err := ioutil.ReadFile(opt.inputFilename)
 	if err != nil {
 		fmt.Printf("failed to read input file, %s\n", err)
 		os.Exit(1)
@@ -85,38 +109,38 @@ func main() {
 	// use user supplied filename to guess output type if provided
 	// otherwise don't transcode (use existing type)
 	outputType := "." + strings.ToLower(decoder.Description())
-	if outputFilename != "" {
-		outputType = filepath.Ext(outputFilename)
+	if opt.outputFilename != "" {
+		outputType = filepath.Ext(opt.outputFilename)
 	}
 
-	if pctResize != 0 {
-		outputWidth = int(float64(header.Width()) * (float64(pctResize) / float64(100)))
-		outputHeight = int(float64(header.Height()) * (float64(pctResize) / float64(100)))
+	if opt.pctResize != 0 {
+		opt.outputWidth = int(float64(header.Width()) * (float64(opt.pctResize) / float64(100)))
+		opt.outputHeight = int(float64(header.Height()) * (float64(opt.pctResize) / float64(100)))
 	}
 
-	if outputWidth == 0 {
-		outputWidth = header.Width()
+	if opt.outputWidth == 0 {
+		opt.outputWidth = header.Width()
 	}
 
-	if outputHeight == 0 {
-		outputHeight = header.Height()
+	if opt.outputHeight == 0 {
+		opt.outputHeight = header.Height()
 	}
 
 	resizeMethod := lilliput.ImageOpsFit
-	if stretch {
+	if opt.stretch {
 		resizeMethod = lilliput.ImageOpsResize
 	}
 
-	if outputWidth == header.Width() && outputHeight == header.Height() {
+	if opt.outputWidth == header.Width() && opt.outputHeight == header.Height() {
 		resizeMethod = lilliput.ImageOpsNoResize
 	} else {
-		fmt.Printf("image resized to %dpx x %dpx\n", outputWidth, outputHeight)
+		fmt.Printf("image resized to %dpx x %dpx\n", opt.outputWidth, opt.outputHeight)
 	}
 
 	opts := &lilliput.ImageOptions{
 		FileType:             outputType,
-		Width:                outputWidth,
-		Height:               outputHeight,
+		Width:                opt.outputWidth,
+		Height:               opt.outputHeight,
 		ResizeMethod:         resizeMethod,
 		NormalizeOrientation: true,
 		EncodeOptions:        EncodeOptions[outputType],
@@ -130,27 +154,27 @@ func main() {
 	}
 
 	// image has been resized, now write file out
-	if outputFilename == "" {
-		outputFilename = "resized" + filepath.Ext(inputFilename)
+	if opt.outputFilename == "" {
+		opt.outputFilename = "resized" + filepath.Ext(opt.inputFilename)
 	}
 
-	if _, err := os.Stat(outputFilename); !os.IsNotExist(err) {
-		if !force {
-			fmt.Printf("output filename %s exists, quitting\n", outputFilename)
+	if _, err := os.Stat(opt.outputFilename); !os.IsNotExist(err) {
+		if !opt.force {
+			fmt.Printf("output filename %s exists, quitting\n", opt.outputFilename)
 			os.Exit(1)
 		}
-		if err := os.Remove(outputFilename); err != nil {
-			fmt.Printf("error removing existing filename %s, quitting\n", outputFilename)
+		if err := os.Remove(opt.outputFilename); err != nil {
+			fmt.Printf("error removing existing filename %s, quitting\n", opt.outputFilename)
 			os.Exit(1)
 		}
 		fmt.Println("output file exists; replacing due to -force")
 	}
 
-	err = ioutil.WriteFile(outputFilename, outputImg, 0644)
+	err = ioutil.WriteFile(opt.outputFilename, outputImg, 0644)
 	if err != nil {
 		fmt.Printf("error writing out resized image, %s\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("image written to %s\n", outputFilename)
+	fmt.Printf("image written to %s\n", opt.outputFilename)
 }
