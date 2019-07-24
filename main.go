@@ -22,6 +22,8 @@ type Options struct {
 	outputFilename string
 	outputWidth    int
 	outputHeight   int
+	maxWidth       int
+	maxHeight      int
 	pctResize      int
 	stretch        bool
 	force          bool
@@ -47,6 +49,8 @@ func init() {
 	flag.StringVar(&opt.outputFilename, "output", "", "name of output file, also determines output type")
 	flag.IntVar(&opt.outputWidth, "width", 0, "width of output file")
 	flag.IntVar(&opt.outputHeight, "height", 0, "height of output file")
+	flag.IntVar(&opt.maxWidth, "max-width", 0, "maximum width of output file")
+	flag.IntVar(&opt.maxHeight, "max-height", 0, "maximum height of output file")
 	flag.IntVar(&opt.pctResize, "pct", 0, "resize to pct of original dimensions")
 	flag.BoolVar(&opt.stretch, "stretch", false, "perform stretching resize instead of cropping")
 	flag.BoolVar(&opt.force, "force", false, "overwrite output file if it exists")
@@ -116,6 +120,14 @@ func main() {
 	if opt.pctResize != 0 {
 		opt.outputWidth = int(float64(header.Width()) * (float64(opt.pctResize) / float64(100)))
 		opt.outputHeight = int(float64(header.Height()) * (float64(opt.pctResize) / float64(100)))
+	}
+
+	if opt.maxWidth != 0 {
+		opt.outputWidth = opt.maxWidth
+	}
+
+	if opt.maxHeight != 0 {
+		opt.outputHeight = opt.maxHeight
 	}
 
 	if opt.outputWidth == 0 {
