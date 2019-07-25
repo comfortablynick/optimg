@@ -24,9 +24,11 @@ type Options struct {
 	outputHeight   int
 	maxWidth       int
 	maxHeight      int
+	maxLongest     int
 	pctResize      int
 	stretch        bool
 	force          bool
+	additionalArgs []string
 }
 
 var EncodeOptions = map[string]map[int]int{
@@ -37,6 +39,22 @@ var EncodeOptions = map[string]map[int]int{
 
 var opt Options
 
+// Max calculates the maximum of two integers
+func Max(nums ...int) int {
+	max := nums[0]
+	for _, i := range nums[1:] {
+		if i > max {
+			max = i
+		}
+	}
+	return max
+}
+
+// Scale calculates the new pixel size based on pct scaling factor
+func Scale(pct int, size int) int {
+	return int(float64(size) * (float64(pct) / float64(100)))
+}
+
 func init() {
 	// init log
 	// TODO: add time, etc.
@@ -45,17 +63,19 @@ func init() {
 	log.SetOutput(ioutil.Discard)
 
 	// set flags
-	flag.StringVar(&opt.inputFilename, "input", "", "name of input file to resize/transcode")
-	flag.StringVar(&opt.outputFilename, "output", "", "name of output file, also determines output type")
-	flag.IntVar(&opt.outputWidth, "width", 0, "width of output file")
-	flag.IntVar(&opt.outputHeight, "height", 0, "height of output file")
-	flag.IntVar(&opt.maxWidth, "max-width", 0, "maximum width of output file")
-	flag.IntVar(&opt.maxHeight, "max-height", 0, "maximum height of output file")
+	flag.StringVar(&opt.inputFilename, "i", "", "name of input file to resize/transcode")
+	flag.StringVar(&opt.outputFilename, "o", "", "name of output file, also determines output type")
+	flag.IntVar(&opt.outputWidth, "w", 0, "width of output file")
+	flag.IntVar(&opt.outputHeight, "h", 0, "height of output file")
+	flag.IntVar(&opt.maxWidth, "mw", 0, "maximum width of output file")
+	flag.IntVar(&opt.maxHeight, "mh", 0, "maximum height of output file")
+	flag.IntVar(&opt.maxLongest, "m", 0, "maximum length of either dimension")
 	flag.IntVar(&opt.pctResize, "pct", 0, "resize to pct of original dimensions")
 	flag.BoolVar(&opt.stretch, "stretch", false, "perform stretching resize instead of cropping")
-	flag.BoolVar(&opt.force, "force", false, "overwrite output file if it exists")
-	flag.BoolVar(&opt.debug, "debug", false, "print debug messages to console")
+	flag.BoolVar(&opt.force, "f", false, "overwrite output file if it exists")
+	flag.BoolVar(&opt.debug, "d", false, "print debug messages to console")
 	flag.Parse()
+	opt.additionalArgs = flag.Args()
 
 	if debug_mode || opt.debug {
 		log.SetOutput(os.Stderr)
@@ -75,6 +95,23 @@ func main() {
 	if err != nil {
 		fmt.Printf("failed to read input file, %s\n", err)
 		os.Exit(1)
+	}
+
+	// check if output file is valid
+	if opt.outputFilename == "" {
+		opt.outputFilename = "resized" + filepath.Ext(opt.inputFilename)
+	}
+
+	if _, err := os.Stat(opt.outputFilename); !os.IsNotExist(err) {
+		if !opt.force {
+			fmt.Printf("output filename %s exists, quitting\n", opt.outputFilename)
+			os.Exit(1)
+		}
+		if err := os.Remove(opt.outputFilename); err != nil {
+			fmt.Printf("error removing existing filename %s, quitting\n", opt.outputFilename)
+			os.Exit(1)
+		}
+		fmt.Println("output file exists; replacing due to -force")
 	}
 
 	decoder, err := lilliput.NewDecoder(inputBuf)
@@ -117,17 +154,21 @@ func main() {
 		outputType = filepath.Ext(opt.outputFilename)
 	}
 
-	if opt.pctResize != 0 {
-		opt.outputWidth = int(float64(header.Width()) * (float64(opt.pctResize) / float64(100)))
-		opt.outputHeight = int(float64(header.Height()) * (float64(opt.pctResize) / float64(100)))
+	if opt.pctResize > 0 {
+		opt.outputWidth = Scale(header.Width(), opt.pctResize)
+		opt.outputHeight = Scale(header.Height(), opt.pctResize)
 	}
 
-	if opt.maxWidth != 0 {
+	if opt.maxWidth > 0 {
 		opt.outputWidth = opt.maxWidth
 	}
 
-	if opt.maxHeight != 0 {
+	if opt.maxHeight > 0 {
 		opt.outputHeight = opt.maxHeight
+	}
+
+	if opt.maxLongest > 0 {
+		// opt.out
 	}
 
 	if opt.outputWidth == 0 {
@@ -163,23 +204,6 @@ func main() {
 	if err != nil {
 		fmt.Printf("error transforming image, %s\n", err)
 		os.Exit(1)
-	}
-
-	// image has been resized, now write file out
-	if opt.outputFilename == "" {
-		opt.outputFilename = "resized" + filepath.Ext(opt.inputFilename)
-	}
-
-	if _, err := os.Stat(opt.outputFilename); !os.IsNotExist(err) {
-		if !opt.force {
-			fmt.Printf("output filename %s exists, quitting\n", opt.outputFilename)
-			os.Exit(1)
-		}
-		if err := os.Remove(opt.outputFilename); err != nil {
-			fmt.Printf("error removing existing filename %s, quitting\n", opt.outputFilename)
-			os.Exit(1)
-		}
-		fmt.Println("output file exists; replacing due to -force")
 	}
 
 	err = ioutil.WriteFile(opt.outputFilename, outputImg, 0644)
