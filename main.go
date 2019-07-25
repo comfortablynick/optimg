@@ -55,6 +55,20 @@ func Scale(pct int, size int) int {
 	return int(float64(size) * (float64(pct) / float64(100)))
 }
 
+// Check if output file is valid
+func validateOutputFile(filename string, force bool) error {
+	if _, err := os.Stat(filename); !os.IsNotExist(err) {
+		if !force {
+			return fmt.Errorf("error: output filename %s exists. To overwrite, use -f to force.", filename)
+		}
+		if err := os.Remove(filename); err != nil {
+			return fmt.Errorf("error: unable to remove existing file %s; aborting.", filename)
+		}
+		fmt.Println("output file exists; replacing due to -f.")
+	}
+	return nil
+}
+
 func init() {
 	// init log
 	// TODO: add time, etc.
@@ -85,7 +99,7 @@ func init() {
 func main() {
 	log.Printf("Command line options: %+v", opt)
 	if opt.inputFilename == "" {
-		fmt.Printf("No input filename provided, quitting.\n")
+		fmt.Println("No input filename provided, quitting.")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -93,7 +107,7 @@ func main() {
 	// decoder wants []byte, so read the whole file into a buffer
 	inputBuf, err := ioutil.ReadFile(opt.inputFilename)
 	if err != nil {
-		fmt.Printf("failed to read input file, %s\n", err)
+		fmt.Fprintf(os.Stderr, "failed to read input file, %s\n", err)
 		os.Exit(1)
 	}
 
@@ -102,23 +116,16 @@ func main() {
 		opt.outputFilename = "resized" + filepath.Ext(opt.inputFilename)
 	}
 
-	if _, err := os.Stat(opt.outputFilename); !os.IsNotExist(err) {
-		if !opt.force {
-			fmt.Printf("output filename %s exists, quitting\n", opt.outputFilename)
-			os.Exit(1)
-		}
-		if err := os.Remove(opt.outputFilename); err != nil {
-			fmt.Printf("error removing existing filename %s, quitting\n", opt.outputFilename)
-			os.Exit(1)
-		}
-		fmt.Println("output file exists; replacing due to -force")
+	if err := validateOutputFile(opt.outputFilename, opt.force); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	decoder, err := lilliput.NewDecoder(inputBuf)
 	// this error reflects very basic checks,
 	// mostly just for the magic bytes of the file to match known image formats
 	if err != nil {
-		fmt.Printf("error decoding image, %s\n", err)
+		fmt.Fprintf(os.Stderr, "error decoding image: %s\n", err)
 		os.Exit(1)
 	}
 	defer decoder.Close()
@@ -127,7 +134,7 @@ func main() {
 	// this error is much more comprehensive and reflects
 	// format errors
 	if err != nil {
-		fmt.Printf("error reading image header, %s\n", err)
+		fmt.Fprintf(os.Stderr, "error reading image header: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -202,13 +209,13 @@ func main() {
 	// resize and transcode image
 	outputImg, err = ops.Transform(decoder, opts, outputImg)
 	if err != nil {
-		fmt.Printf("error transforming image, %s\n", err)
+		fmt.Fprintf(os.Stderr, "error transforming image: %s\n", err)
 		os.Exit(1)
 	}
 
 	err = ioutil.WriteFile(opt.outputFilename, outputImg, 0644)
 	if err != nil {
-		fmt.Printf("error writing out resized image, %s\n", err)
+		fmt.Fprintf(os.Stderr, "error writing resized image: %s\n", err)
 		os.Exit(1)
 	}
 
