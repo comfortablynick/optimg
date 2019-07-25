@@ -25,7 +25,7 @@ type Options struct {
 	maxWidth       int
 	maxHeight      int
 	maxLongest     int
-	pctResize      int
+	pctResize      float64
 	stretch        bool
 	force          bool
 	additionalArgs []string
@@ -51,7 +51,7 @@ func Max(nums ...int) int {
 }
 
 // Scale calculates the new pixel size based on pct scaling factor
-func Scale(pct int, size int) int {
+func Scale(pct float64, size int) int {
 	return int(float64(size) * (float64(pct) / float64(100)))
 }
 
@@ -84,7 +84,7 @@ func init() {
 	flag.IntVar(&opt.maxWidth, "mw", 0, "maximum width of output file")
 	flag.IntVar(&opt.maxHeight, "mh", 0, "maximum height of output file")
 	flag.IntVar(&opt.maxLongest, "m", 0, "maximum length of either dimension")
-	flag.IntVar(&opt.pctResize, "pct", 0, "resize to pct of original dimensions")
+	flag.Float64Var(&opt.pctResize, "pct", 0, "resize to pct of original dimensions")
 	flag.BoolVar(&opt.stretch, "stretch", false, "perform stretching resize instead of cropping")
 	flag.BoolVar(&opt.force, "f", false, "overwrite output file if it exists")
 	flag.BoolVar(&opt.debug, "d", false, "print debug messages to console")
@@ -161,30 +161,40 @@ func main() {
 		outputType = filepath.Ext(opt.outputFilename)
 	}
 
-	if opt.pctResize > 0 {
-		opt.outputWidth = Scale(header.Width(), opt.pctResize)
-		opt.outputHeight = Scale(header.Height(), opt.pctResize)
-	}
-
-	if opt.maxWidth > 0 {
-		opt.outputWidth = opt.maxWidth
-	}
-
-	if opt.maxHeight > 0 {
-		opt.outputHeight = opt.maxHeight
-	}
-
 	if opt.maxLongest > 0 {
-		// opt.out
+		// calculate longest dim, and assign to pctResize
+		longest := Max(header.Width(), header.Height())
+		if longest > opt.maxLongest {
+			fmt.Printf("resizing to longest dimension of %dpx\n", opt.maxLongest)
+			opt.pctResize = (float64(opt.maxLongest) / float64(longest)) * float64(100)
+		}
 	}
 
-	if opt.outputWidth == 0 {
-		opt.outputWidth = header.Width()
-	}
+	opt.outputWidth = (func() int {
+		if opt.pctResize > 0 {
+			return Scale(opt.pctResize, header.Width())
+		}
+		if opt.maxWidth > 0 {
+			return opt.maxWidth
+		}
+		if opt.outputWidth == 0 {
+			return header.Width()
+		}
+		return opt.outputWidth
+	})()
 
-	if opt.outputHeight == 0 {
-		opt.outputHeight = header.Height()
-	}
+	opt.outputHeight = (func() int {
+		if opt.pctResize > 0 {
+			return Scale(opt.pctResize, header.Height())
+		}
+		if opt.maxHeight > 0 {
+			return opt.maxHeight
+		}
+		if opt.outputHeight == 0 {
+			return header.Height()
+		}
+		return opt.outputHeight
+	})()
 
 	resizeMethod := lilliput.ImageOpsFit
 	if opt.stretch {
