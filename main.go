@@ -26,6 +26,7 @@ type Options struct {
 	maxWidth       int
 	maxHeight      int
 	maxLongest     int
+	minShortest    int
 	pctResize      float64
 	stretch        bool
 	force          bool
@@ -50,6 +51,17 @@ func Max(nums ...int) int {
 		}
 	}
 	return max
+}
+
+// Min calculates the minimum of two integers
+func Min(nums ...int) int {
+	min := nums[0]
+	for _, i := range nums[1:] {
+		if i < min {
+			min = i
+		}
+	}
+	return min
 }
 
 // Scale calculates the new pixel size based on pct scaling factor
@@ -104,7 +116,8 @@ func init() {
 	flag.IntVar(&opt.outputHeight, "h", 0, "height of output file")
 	flag.IntVar(&opt.maxWidth, "mw", 0, "maximum width of output file")
 	flag.IntVar(&opt.maxHeight, "mh", 0, "maximum height of output file")
-	flag.IntVar(&opt.maxLongest, "m", 0, "maximum length of either dimension")
+	flag.IntVar(&opt.maxLongest, "max", 0, "maximum length of either dimension")
+	flag.IntVar(&opt.minShortest, "min", 0, "Minimum length of shortest side")
 	flag.Float64Var(&opt.pctResize, "pct", 0, "resize to pct of original dimensions")
 	flag.BoolVar(&opt.stretch, "stretch", false, "perform stretching resize instead of cropping")
 	flag.BoolVar(&opt.force, "f", false, "overwrite output file if it exists")
@@ -187,10 +200,17 @@ func main() {
 
 	if opt.maxLongest > 0 {
 		// calculate longest dim, and assign to pctResize
-		longest := Max(header.Width(), header.Height())
-		if longest > opt.maxLongest {
-			fmt.Printf("Resizing to longest dimension of %dpx\n", opt.maxLongest)
+		if longest := Max(header.Width(), header.Height()); longest > opt.maxLongest {
+			fmt.Printf("Resizing to longest dimension of %d px\n", opt.maxLongest)
 			opt.pctResize = (float64(opt.maxLongest) / float64(longest)) * float64(100)
+		}
+	}
+
+	if opt.minShortest > 0 {
+		// calculate longest dim, and assign to pctResize
+		if shortest := Min(header.Width(), header.Height()); shortest > opt.minShortest {
+			fmt.Printf("Resizing shortest dimension to %d px\n", opt.minShortest)
+			opt.pctResize = (float64(opt.minShortest) / float64(shortest)) * float64(100)
 		}
 	}
 
