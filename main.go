@@ -28,6 +28,7 @@ type Options struct {
 	pctResize      float64
 	stretch        bool
 	force          bool
+	noAction       bool
 	additionalArgs []string
 }
 
@@ -88,6 +89,7 @@ func init() {
 	flag.BoolVar(&opt.stretch, "stretch", false, "perform stretching resize instead of cropping")
 	flag.BoolVar(&opt.force, "f", false, "overwrite output file if it exists")
 	flag.BoolVar(&opt.debug, "d", false, "print debug messages to console")
+	flag.BoolVar(&opt.noAction, "n", false, "don't write files; just display results")
 	flag.Parse()
 	opt.additionalArgs = flag.Args()
 
@@ -116,9 +118,13 @@ func main() {
 		opt.outputFilename = "resized" + filepath.Ext(opt.inputFilename)
 	}
 
-	if err := validateOutputFile(opt.outputFilename, opt.force); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	if !opt.noAction {
+		if err := validateOutputFile(opt.outputFilename, opt.force); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Println("displaying results only")
 	}
 
 	decoder, err := lilliput.NewDecoder(inputBuf)
@@ -223,11 +229,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = ioutil.WriteFile(opt.outputFilename, outputImg, 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error writing resized image: %s\n", err)
-		os.Exit(1)
-	}
+	// TODO: add func to humanize bytes
+	fmt.Printf("output size: %d KB\n", len(outputImg)/1024)
 
-	fmt.Printf("image written to %s\n", opt.outputFilename)
+	if !opt.noAction {
+		err = ioutil.WriteFile(opt.outputFilename, outputImg, 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error writing resized image: %s\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("image written to %s\n", opt.outputFilename)
+	}
 }
