@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/discordapp/lilliput"
@@ -56,6 +57,25 @@ func Scale(pct float64, size int) int {
 	return int(float64(size) * (float64(pct) / float64(100)))
 }
 
+// Humanize prints bytes in human-readable strings
+func Humanize(bytes int) string {
+	suffix := "B"
+	num := float64(bytes)
+	factor := 1024.0
+	// k=kilo, M=mega, G=giga, T=tera, P=peta, E=exa, Z=zetta, Y=yotta
+	units := []string{"", "K", "M", "G", "T", "P", "E", "Z"}
+
+	for _, unit := range units {
+		if num < factor {
+			return fmt.Sprintf("%3.1f%s%s", num, unit, suffix)
+		}
+		num = (num / factor)
+	}
+	// if we got here, it's a really big number!
+	// return yottabytes
+	return fmt.Sprintf("%.1f%s%s", num, "Y", suffix)
+}
+
 // Check if output file is valid
 func validateOutputFile(filename string, force bool) error {
 	if _, err := os.Stat(filename); !os.IsNotExist(err) {
@@ -100,6 +120,7 @@ func init() {
 
 func main() {
 	log.Printf("Command line options: %+v", opt)
+
 	if opt.inputFilename == "" {
 		fmt.Println("No input filename provided, quitting.")
 		flag.Usage()
@@ -115,7 +136,8 @@ func main() {
 
 	// check if output file is valid
 	if opt.outputFilename == "" {
-		opt.outputFilename = "resized" + filepath.Ext(opt.inputFilename)
+		ext := filepath.Ext(opt.inputFilename)
+		opt.outputFilename = strings.TrimSuffix(opt.inputFilename, ext) + "_opt" + ext
 	}
 
 	if !opt.noAction {
@@ -124,7 +146,7 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		fmt.Println("displaying results only")
+		fmt.Println("**Displaying results only**")
 	}
 
 	decoder, err := lilliput.NewDecoder(inputBuf)
@@ -143,10 +165,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error reading image header: %s\n", err)
 		os.Exit(1)
 	}
-
-	// print some basic info about the image
-	fmt.Printf("file type: %s\n", decoder.Description())
-	fmt.Printf("%dpx x %dpx\n", header.Width(), header.Height())
 
 	if decoder.Duration() != 0 {
 		fmt.Printf("duration: %.2f s\n", float64(decoder.Duration())/float64(time.Second))
@@ -171,7 +189,7 @@ func main() {
 		// calculate longest dim, and assign to pctResize
 		longest := Max(header.Width(), header.Height())
 		if longest > opt.maxLongest {
-			fmt.Printf("resizing to longest dimension of %dpx\n", opt.maxLongest)
+			fmt.Printf("Resizing to longest dimension of %dpx\n", opt.maxLongest)
 			opt.pctResize = (float64(opt.maxLongest) / float64(longest)) * float64(100)
 		}
 	}
@@ -209,8 +227,6 @@ func main() {
 
 	if opt.outputWidth == header.Width() && opt.outputHeight == header.Height() {
 		resizeMethod = lilliput.ImageOpsNoResize
-	} else {
-		fmt.Printf("image resized to %dpx x %dpx\n", opt.outputWidth, opt.outputHeight)
 	}
 
 	opts := &lilliput.ImageOptions{
@@ -229,16 +245,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: add func to humanize bytes
-	fmt.Printf("output size: %d KB\n", len(outputImg)/1024)
-
 	if !opt.noAction {
 		err = ioutil.WriteFile(opt.outputFilename, outputImg, 0644)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error writing resized image: %s\n", err)
 			os.Exit(1)
 		}
-
-		fmt.Printf("image written to %s\n", opt.outputFilename)
 	}
+
+	inputSize := len(inputBuf)
+	outputSize := len(outputImg)
+	log.Printf("Input buf size: %d", inputSize)
+	log.Printf("Output buf size: %d", outputSize)
+
+	// print some basic info about the image
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
+
+	fmt.Fprintf(w, "File Name\t%s\t -> \t%s\n", opt.inputFilename, opt.outputFilename)
+	fmt.Fprintf(w, "File Dimensions\t%d x %d px\t -> \t%d x %d px\n",
+		header.Width(), header.Height(), opt.outputWidth, opt.outputHeight)
+	fmt.Fprintf(w, "File Size\t%s\t -> \t%s\n", Humanize(inputSize), Humanize(outputSize))
+	fmt.Fprintf(w, "Size Reduction\t%.1f%%", 100.0-(float64(outputSize)/float64(inputSize)*100))
+
+	w.Flush()     // write details table
+	fmt.Println() // newline separator
 }
