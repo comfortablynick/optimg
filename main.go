@@ -21,6 +21,7 @@ type Options struct {
 	debug          bool
 	inputFilename  string
 	outputFilename string
+	jpegQuality    int
 	outputWidth    int
 	outputHeight   int
 	maxWidth       int
@@ -32,12 +33,6 @@ type Options struct {
 	force          bool
 	noAction       bool
 	additionalArgs []string
-}
-
-var EncodeOptions = map[string]map[int]int{
-	".jpeg": map[int]int{lilliput.JpegQuality: 85},
-	".png":  map[int]int{lilliput.PngCompression: 7},
-	".webp": map[int]int{lilliput.WebpQuality: 85},
 }
 
 var opt Options
@@ -112,6 +107,7 @@ func init() {
 	// set flags
 	flag.StringVar(&opt.inputFilename, "i", "", "name of input file to resize/transcode")
 	flag.StringVar(&opt.outputFilename, "o", "", "name of output file, also determines output type")
+	flag.IntVar(&opt.jpegQuality, "q", 85, "jpeg quality (1-100)")
 	flag.IntVar(&opt.outputWidth, "w", 0, "width of output file")
 	flag.IntVar(&opt.outputHeight, "h", 0, "height of output file")
 	flag.IntVar(&opt.maxWidth, "mw", 0, "maximum width of output file")
@@ -247,6 +243,12 @@ func main() {
 
 	if opt.outputWidth == header.Width() && opt.outputHeight == header.Height() {
 		resizeMethod = lilliput.ImageOpsNoResize
+	}
+
+	EncodeOptions := map[string]map[int]int{
+		".jpeg": map[int]int{lilliput.JpegQuality: opt.jpegQuality},
+		".png":  map[int]int{lilliput.PngCompression: 7},
+		".webp": map[int]int{lilliput.WebpQuality: 85},
 	}
 
 	opts := &lilliput.ImageOptions{
